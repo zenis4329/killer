@@ -20,11 +20,11 @@ jobs:
         sudo xcode-select -switch /Applications/Xcode.app
         xcodebuild -version
 
-    - name: Build Target
+    - name: Build All Targets
       run: |
         xcodebuild clean build \
           -project ThreeOneOSFive.xcodeproj \
-          -target "ThreeOneOSFive" \
+          -alltargets \
           -sdk iphonesimulator \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
