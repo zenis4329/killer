@@ -20,7 +20,7 @@ jobs:
         sudo xcode-select -switch /Applications/Xcode.app
         xcodebuild -version
 
-    - name: Build All Targets
+    - name: Build App for Simulator
       run: |
         xcodebuild clean build \
           -project ThreeOneOSFive.xcodeproj \
@@ -28,4 +28,18 @@ jobs:
           -sdk iphonesimulator \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_ALLOWED=NO \
+          CONFIGURATION_BUILD_DIR="./build/Debug-iphonesimulator"
+
+    - name: Package into .ipa
+      run: |
+        mkdir -p Payload
+        cp -r "./build/Debug-iphonesimulator/ThreeOneOSFive.app" Payload/
+        zip -r ThreeOneOSFive.ipa Payload
+        rm -rf Payload
+
+    - name: Upload IPA Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ThreeOneOSFive-IPA
+        path: ThreeOneOSFive.ipa
