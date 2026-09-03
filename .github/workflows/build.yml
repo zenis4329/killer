@@ -20,19 +20,11 @@ jobs:
         sudo xcode-select -switch /Applications/Xcode.app
         xcodebuild -version
 
-    - name: List Schemes (Kiểm tra tên scheme chính xác)
+    - name: Build Target
       run: |
-        xcodebuild -list -project ThreeOneOSFive.xcodeproj
-
-    - name: Build for Simulator
-      run: |
-        # Lấy scheme đầu tiên tìm thấy trong project để build tránh lỗi sai tên
-        SCHEME=$(xcodebuild -list -project ThreeOneOSFive.xcodeproj -json | tr -d '\n' | grep -o '"schemes":\[[^]]*\]' | grep -o '"[^"]*"' | head -n 2 | tail -n 1 | tr -d '"')
-        echo "Using scheme: $SCHEME"
-
         xcodebuild clean build \
           -project ThreeOneOSFive.xcodeproj \
-          -scheme "$SCHEME" \
+          -target "ThreeOneOSFive" \
           -sdk iphonesimulator \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
