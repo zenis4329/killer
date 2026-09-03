@@ -1,7 +1,174 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Auth Manager (Xử lý API)
+class AuthManager: ObservableObject {
+    @Published var isAuthenticated = false
+    @Published var isLoading = false
+    @Published var errorMessage: String? = nil
+    
+    // Lưu key vào UserDefaults để không phải nhập lại lần sau
+    @AppStorage("saved_auth_key") var savedKey: String = ""
+    
+    let apiUrl = URL(string: "https://solitudepremium.click/ipa/proxy/api.php")!
+    // Lấy Device ID của máy
+    let deviceId = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+    
+    func autoLogin() {
+        guard !savedKey.isEmpty else { return }
+        verifyKey(key: savedKey)
+    }
+    
+    func verifyKey(key: String) {
+        guard !key.isEmpty else {
+            self.errorMessage = "Vui lòng nhập mã Key!"
+            return
+        }
+        
+        self.isLoading = true
+        self.errorMessage = nil
+        
+        var request = URLRequest(url: apiUrl)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        
+        let postString = "action=verify_app_key&key=\(key)&device_id=\(deviceId)"
+        request.httpBody = postString.data(using: .utf8)
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                self.isLoading = false
+                
+                if let error = error {
+                    self.errorMessage = "Lỗi mạng: \(error.localizedDescription)"
+                    return
+                }
+                
+                guard let data = data else {
+                    self.errorMessage = "Không nhận được dữ liệu từ máy chủ."
+                    return
+                }
+                
+                do {
+                    if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+                        let status = json["status"] as? String ?? "error"
+                        
+                        if status == "success" {
+                            self.savedKey = key
+                            withAnimation {
+                                self.isAuthenticated = true
+                            }
+                        } else {
+                            self.errorMessage = json["message"] as? String ?? "Xác thực thất bại!"
+                            self.savedKey = "" // Xóa key sai
+                        }
+                    }
+                } catch {
+                    self.errorMessage = "Lỗi xử lý dữ liệu từ máy chủ."
+                }
+            }
+        }.resume()
+    }
+}
+
+// MARK: - Login View (Giao diện Đăng nhập)
+struct LoginView: View {
+    @ObservedObject var authManager: AuthManager
+    @State private var inputKey: String = ""
+    
+    var body: some View {
+        ZStack {
+            Color(UIColor.systemGroupedBackground).ignoresSafeArea()
+            
+            VStack(spacing: 25) {
+                // Avatar App
+                AsyncImage(url: URL(string: "https://solitudepremium.click/ipa/proxy/li.jpg")) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                            .frame(width: 120, height: 120)
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 120, height: 120)
+                            .clipShape(Circle())
+                            .shadow(radius: 10)
+                    case .failure:
+                        Image(systemName: "person.circle.fill")
+                            .resizable()
+                            .frame(width: 120, height: 120)
+                            .foregroundColor(.gray)
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+                .padding(.top, 50)
+                
+                Text("Xác Thực Ứng Dụng")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                VStack(spacing: 15) {
+                    TextField("Nhập mã Key của bạn...", text: $inputKey)
+                        .padding()
+                        .background(Color(UIColor.secondarySystemGroupedBackground))
+                        .cornerRadius(12)
+                        .disableAutocorrection(true)
+                        .autocapitalization(.none)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                        )
+                    
+                    if let errorMessage = authManager.errorMessage {
+                        Text(errorMessage)
+                            .foregroundColor(.red)
+                            .font(.footnote)
+                            .multilineTextAlignment(.center)
+                    }
+                    
+                    Button(action: {
+                        authManager.verifyKey(key: inputKey)
+                    }) {
+                        HStack {
+                            if authManager.isLoading {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .padding(.trailing, 5)
+                            }
+                            Text("Đăng Nhập")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(inputKey.isEmpty ? Color.gray : Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                    }
+                    .disabled(inputKey.isEmpty || authManager.isLoading)
+                }
+                .padding(.horizontal, 30)
+                
+                Spacer()
+                
+                Text("Device ID: \(authManager.deviceId)")
+                    .font(.caption2)
+                    .foregroundColor(.gray)
+                    .padding(.bottom, 20)
+            }
+        }
+        .onAppear {
+            inputKey = authManager.savedKey
+            authManager.autoLogin()
+        }
+    }
+}
+
+// MARK: - Content View (Giao diện chính điều hướng)
 struct ContentView: View {
+    @StateObject private var authManager = AuthManager()
+    
     @Environment(\.appLanguage) private var language
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var patchDraftCoordinator: PatchDraftCoordinator
@@ -42,6 +209,17 @@ struct ContentView: View {
     }
 
     var body: some View {
+        Group {
+            if authManager.isAuthenticated {
+                mainAppContent
+            } else {
+                LoginView(authManager: authManager)
+            }
+        }
+    }
+    
+    // Đưa toàn bộ giao diện cũ vào một biến riêng
+    private var mainAppContent: some View {
         Group {
             if horizontalSizeClass == .regular {
                 regularLayout
